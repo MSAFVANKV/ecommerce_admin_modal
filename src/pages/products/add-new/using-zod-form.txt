@@ -1,0 +1,198 @@
+import { useModal } from "@/providers/context/context";
+import ProductLayout, {
+  ProductContent,
+  ProductFooter,
+  ProductHeader,
+} from "./product-layout";
+import { useEffect, useMemo, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import GeneralSection from "./GeneralSection-page";
+import FilesMediaSectionPage from "./FilesMeadiaSection-page";
+import PriceStockSectionPage from "./PriceStockSection-page";
+import ShippingSectionPage from "./ShippingSection-page";
+import { makeToast } from "@/utils/toaster";
+
+import { useForm, FormProvider } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { ProductSchema } from "./ProductSchema";
+
+type ProductFormData = z.infer<typeof ProductSchema>;
+
+const pageToStep: Record<string, number> = {
+  general: 1,
+  filesMedia: 2,  // Changed from "files-media" to "filesMedia"
+  priceStock: 3,  // Changed from "price-stock" to "priceStock"
+  shipping: 4,
+};
+
+export default function ProductAddPage() {
+  const { search, pathname } = useLocation(); // Access current URL
+  const navigate = useNavigate(); // For navigation
+  const { selectedPage, setSelectedPage } = useModal();
+  const [currentStep, setCurrentStep] = useState(1);
+  const searchParams = useMemo(() => new URLSearchParams(search), [search]);
+
+  // React Hook Form setup
+  const methods = useForm<ProductFormData>({
+    resolver: zodResolver(ProductSchema),
+    defaultValues: {
+      general: {
+        name: "",
+        mrp: 0, // Default MRP value
+        sku: "",
+        barcode: "",
+        brand: "",
+        keywords: "",
+        minQty: 1, // Minimum quantity default
+        weight: 0,
+        dimensions: "",
+        taxSlab: "",
+        status: false, // Default to false for status
+        todaysDeal: false, // Default to false for today's deal
+        description: "",
+      },
+      filesMedia: { images: [] },
+      priceStock: { price: 0, stock: 0 },
+      shipping: { weight: 0, dimensions: "" },
+    },
+    mode: "onChange",
+  });
+
+  useEffect(() => {
+    const currentPath = searchParams.get("q") || "general";
+    // setSelectedPage(currentPath);
+    setSelectedPage(currentPath as "general" | "files-media" | "price-stock" | "shipping");
+    setCurrentStep(pageToStep[currentPath]);
+  }, [searchParams, setSelectedPage, currentStep]);
+
+  //   ====== got to next step =================================
+  const handleNextStep = async () => {
+    const isValid = await methods.trigger([selectedPage] as ["general" | "filesMedia" | "priceStock" | "shipping"]);  
+    if (!isValid) {
+      makeToast("Please fix the errors before proceeding.");
+      return;
+    }
+
+    if (currentStep === 4) {
+      // Save all data to the database
+      saveDataToDatabase(); // Call a function to handle saving
+      return;
+    }
+    const nextStep = currentStep + 1;
+    setCurrentStep(nextStep);
+    const nextPage: any = Object.keys(pageToStep).find(
+      (key) => pageToStep[key] === nextStep
+    );
+    setSelectedPage(nextPage);
+    navigate(`${pathname}?q=${nextPage}`);
+  };
+
+  //   ====== got to Prev step =================================
+
+  const handlePrevStep = () => {
+    const prevStep = currentStep - 1;
+    setCurrentStep(prevStep);
+    const prevPage: any = Object.keys(pageToStep).find(
+      (key) => pageToStep[key] === prevStep
+    );
+    setSelectedPage(prevPage);
+    navigate(`${pathname}?q=${prevPage}`);
+  };
+
+  //   ====== save data to database ============================
+
+  const saveDataToDatabase = () => {
+    const data = methods.getValues();
+    console.log("Final Data:", data);
+    makeToast("Data saved successfully!");
+    // Simulate an API call
+    // await axios.post("/api/products", data);
+  };
+
+  //   ==== switch pages =======
+  const renderPageComponent = () => {
+    const page = selectedPage ?? "general"; // Use "general" if selectedPage is null
+    switch (page) {
+      case "general":
+        return <GeneralSection />;
+      case "files-media":
+        return <FilesMediaSectionPage />;
+      case "price-stock":
+        return <PriceStockSectionPage />;
+      case "shipping":
+        return <ShippingSectionPage />;
+      default:
+        return null;
+    }
+  };
+  
+
+  //   ==== render step navigation =======
+  const renderPageTitle = () => {
+    switch (selectedPage || "general") {
+      case "general":
+        return (
+          <div className="text-lg font-bold capitalize">
+            Product Information
+          </div>
+        );
+      case "files-media":
+        return (
+          <div className="text-lg font-bold capitalize">
+            Product Files & Media
+          </div>
+        );
+      case "price-stock":
+        return (
+          <div className="text-lg font-bold capitalize">
+            Product price + stock
+          </div>
+        );
+      case "shipping":
+        return (
+          <div className="text-lg font-bold capitalize">
+            Shipping Configuration
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <FormProvider {...methods}>
+      <ProductLayout>
+        <ProductHeader>{renderPageTitle()}</ProductHeader>
+
+        <ProductContent className="h-full">
+          {renderPageComponent()}
+        </ProductContent>
+
+        <ProductFooter>
+          <Button
+            className={cn("bg-gray-300 hover:bg-gray-400 text-black", {
+              "opacity-50 cursor-not-allowed": currentStep === 1,
+            })}
+            disabled={currentStep === 1}
+            onClick={handlePrevStep}
+          >
+            Prev
+          </Button>
+          <Button
+            variant={"b2bStyle"}
+            className={cn(" text-white w-40", {
+              " ": currentStep === 4,
+            })}
+            //   disabled={currentStep === 4}
+            onClick={handleNextStep}
+          >
+            {currentStep === 4 ? "save Product" : " Next"}
+          </Button>
+        </ProductFooter>
+      </ProductLayout>
+    </FormProvider>
+  );
+}
